@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pocket Lint</title>
+<style>
+  :root {
+    --bg:#ffffff; --ink:#18181b; --muted:#71717a; --faint:#a1a1aa;
+    --line:#ececec; --hair:#f4f4f5; --panel:#fafafa;
+    --accent:#2563eb; --fail:#dc2626; --ok:#16a34a; --amber:#d97706;
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased; display:flex; flex-direction:column;
+  }
+  header {
+    padding:18px 28px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:14px;
+  }
+  header .logo { height:30px; width:30px; object-fit:contain; display:block; flex:none;
+                 margin-right:-4px; }
+  header h1 { font-size:17px; font-weight:600; margin:0; letter-spacing:-.01em; }
+  header .tag { color:var(--muted); font-size:13px; font-weight:400; }
+  header .spacer { flex:1; }
+  #status { color:var(--faint); font-size:12.5px; font-variant-numeric:tabular-nums; }
+  button#run {
+    background:var(--ink); color:#fff; border:0; font-weight:500; font-size:13px;
+    padding:8px 16px; border-radius:8px; cursor:pointer; letter-spacing:-.01em;
+    transition:opacity .15s;
+  }
+  button#run:hover { opacity:.85; }
+  button#run:disabled { background:var(--hair); color:var(--faint); cursor:default; }
+
+  main { flex:1; display:grid; grid-template-columns:320px 1fr 420px; min-height:0; }
+  section { min-height:0; display:flex; flex-direction:column; overflow:hidden; }
+  .col-title {
+    padding:16px 22px 10px; font-size:11px; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--faint); font-weight:600;
+  }
+  .flags { overflow:auto; padding:6px 18px 22px; flex:1; }
+  .doc   { overflow:auto; padding:14px 26px 40px; flex:1; background:var(--panel); }
+  .trace { overflow:auto; padding:6px 22px 28px; flex:1; }
+  section + section { border-left:1px solid var(--line); }
+
+  .empty { color:var(--faint); font-size:13px; padding:10px 4px; }
+
+  /* ---- flag cards ---- */
+  .flag {
+    border:1px solid var(--line); border-radius:11px; padding:13px 15px;
+    margin-bottom:11px; cursor:pointer; transition:border-color .15s, box-shadow .15s;
+    background:#fff;
+  }
+  .flag:hover { border-color:#dcdcdc; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  .flag .h { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+  .flag .dot { width:7px; height:7px; border-radius:50%; background:var(--fail); flex:none; }
+  .flag .badge { font-size:11px; color:var(--muted); font-weight:500; }
+  .flag .sev { margin-left:auto; font-size:10px; color:var(--fail); text-transform:uppercase;
+               letter-spacing:.04em; font-weight:600; }
+  .flag .msg { font-size:13.5px; line-height:1.5; margin:0 0 4px; letter-spacing:-.005em; }
+  .flag .ev { font-size:11.5px; color:var(--muted);
+              font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .flag .acts { display:flex; gap:8px; margin-top:12px; }
+  .flag .acts button {
+    flex:1; border:1px solid var(--line); background:#fff; color:var(--ink);
+    border-radius:7px; padding:6px; cursor:pointer; font-size:12px; font-weight:500;
+    transition:.12s;
+  }
+  .flag .acts .acc:hover { border-color:var(--ok); color:var(--ok); }
+  .flag .acts .rej:hover { border-color:var(--fail); color:var(--fail); }
+  .flag.accepted { border-color:#bbf7d0; }
+  .flag.accepted .dot { background:var(--ok); }
+  .flag.rejected { opacity:.5; }
+  .flag.rejected .dot { background:var(--faint); }
+  .flag .verdict { font-size:11.5px; margin-top:9px; font-weight:600; }
+
+  /* ---- document ---- */
+  .page { position:relative; margin:0 auto 20px; width:100%; max-width:720px;
+          background:#fff; border-radius:4px;
+          box-shadow:0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.06); }
+  .page img { display:block; width:100%; height:auto; border-radius:4px; }
+  .page .pno { position:absolute; top:-22px; left:2px; color:var(--faint); font-size:11px; }
+  .box { position:absolute; border:1.5px solid var(--fail); border-radius:3px;
+         background:rgba(220,38,38,.10); transition:box-shadow .3s; animation:fade .4s ease; }
+  .box.gap { border-style:dashed; border-color:var(--amber); background:rgba(217,119,6,.08); }
+  .box .lbl { position:absolute; top:-19px; left:-1px; font-size:10px; white-space:nowrap;
+              background:var(--fail); color:#fff; padding:1px 6px; border-radius:4px;
+              font-weight:500; }
+  .box.gap .lbl { background:var(--amber); }
+  .box.pulse { box-shadow:0 0 0 5px rgba(220,38,38,.18); }
+  @keyframes fade { from{opacity:0} to{opacity:1} }
+
+  /* ---- trace ---- */
+  .intro { color:var(--faint); font-size:12px; margin:6px 2px 16px; min-height:18px; }
+  .acard { border:1px solid var(--line); border-radius:12px; padding:15px 17px;
+           margin-bottom:14px; background:#fff; }
+  .acard .ah { display:flex; align-items:center; gap:9px; margin-bottom:11px; }
+  .acard .sdot { width:8px; height:8px; border-radius:50%; background:var(--amber);
+                 flex:none; box-shadow:0 0 0 0 rgba(217,119,6,.4); animation:beat 1.3s infinite; }
+  .acard.done .sdot { background:var(--ok); animation:none; }
+  @keyframes beat { 0%{box-shadow:0 0 0 0 rgba(217,119,6,.35)} 70%{box-shadow:0 0 0 6px rgba(217,119,6,0)} }
+  .acard .aname { font-size:13.5px; font-weight:600; letter-spacing:-.01em; }
+  .acard .akind { margin-left:auto; font-size:11px; color:var(--faint); }
+  .feed { display:flex; flex-direction:column; gap:7px; }
+  .tline { font-size:13px; color:var(--muted); letter-spacing:-.005em; min-height:18px; }
+  .tline::after { content:"▍"; color:var(--faint); margin-left:1px; animation:blink 1s steps(1) infinite; }
+  .tline.typed::after { content:""; }
+  .tline.flag { color:var(--ink); font-weight:500; }
+  .tline.flag b { color:var(--fail); font-weight:600; }
+  .tline.err { color:var(--fail); font-family:ui-monospace,monospace; font-size:12px; }
+  @keyframes blink { 50%{opacity:0} }
+  pre.code {
+    margin:9px 0 3px; background:#fafafa; border:1px solid var(--hair);
+    border-radius:8px; padding:11px 13px; overflow:auto;
+    font:11.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; color:#3f3f46;
+    white-space:pre-wrap; word-break:break-word;
+  }
+  pre.code::after { content:"▍"; color:var(--faint); animation:blink 1s steps(1) infinite; }
+  pre.code.typed::after { content:""; }
+</style>
+</head>
+<body>
+<header>
+  <img class="logo" src="/assets/logo.png?v=2" alt="Pocket Lint logo">
+  <h1>Pocket&nbsp;Lint</h1>
+  <span class="tag">agentic compliance, down to the last thread</span>
+  <span class="spacer"></span>
+  <span id="status">idle</span>
+  <button id="run">Lint this CSR</button>
+</header>
+
+<main>
+  <section>
+    <div class="col-title">Flags · human review</div>
+    <div class="flags" id="flags"><div class="empty">Awaiting analysis…</div></div>
+  </section>
+  <section>
+    <div class="col-title">Document · synthetic_csr.pdf · sample</div>
+    <div class="doc" id="doc"></div>
+  </section>
+  <section>
+    <div class="col-title">Agent activity</div>
+    <div class="trace" id="trace"><div class="intro" id="intro"></div></div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const doc = $('#doc'), trace = $('#trace'), flags = $('#flags'), statusEl = $('#status');
+let pages = {}, flagCount = 0, scripts = {}, cards = {};
+
+const ROLE = {
+  auditor: { name: 'Structural Auditor',   kind: 'ICH E3 Structure',
+             read: 'Reading synthetic_csr.pdf', act: 'Verifying section structure' },
+  checker: { name: 'Consistency Checker',  kind: 'Table vs Narrative',
+             read: 'Extracting Table 14.1',  act: 'Recomputing enrollment totals' },
+};
+
+/* ---------- typewriter ---------- */
+function typeInto(el, text, speed) {
+  return new Promise(res => {
+    let i = 0;
+    (function tick(){
+      el.textContent = text.slice(0, ++i);
+      trace.scrollTop = trace.scrollHeight;
+      if (i < text.length) setTimeout(tick, speed);
+      else { el.classList.add('typed'); res(); }
+    })();
+  });
+}
+// one serial queue per card so a card's lines type in order; cards run in parallel
+class Feed {
+  constructor(container){ this.c = container; this.chain = Promise.resolve(); }
+  line(text, cls){ this.chain = this.chain.then(() => {
+    const el = document.createElement('div');
+    el.className = 'tline ' + (cls||'');
+    this.c.appendChild(el);
+    return typeInto(el, text, 20);
+  }); return this.chain; }
+  html(htmlStr, cls){ this.chain = this.chain.then(() => new Promise(res => {
+    const el = document.createElement('div'); el.className = 'tline typed ' + (cls||'');
+    el.innerHTML = htmlStr; this.c.appendChild(el); trace.scrollTop = trace.scrollHeight; res();
+  })); }
+  code(text){ this.chain = this.chain.then(() => {
+    const el = document.createElement('pre'); el.className = 'code';
+    this.c.appendChild(el);
+    return typeInto(el, text, 6);
+  }); }
+}
+
+/* ---------- document ---------- */
+async function loadDoc() {
+  doc.innerHTML = '';
+  const meta = await (await fetch('/api/meta')).json();
+  for (const p of meta.pages) {
+    const wrap = document.createElement('div');
+    wrap.className = 'page';
+    wrap.innerHTML = `<span class="pno">Page ${p.page}</span><img src="/api/page/${p.page}" alt="">`;
+    doc.appendChild(wrap);
+    pages[p.page] = { el: wrap, w: p.w, h: p.h };
+  }
+}
+const esc = s => (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function drawBox(box, gap, label) {
+  const pg = pages[box.page]; if (!pg) return null;
+  const b = document.createElement('div');
+  b.className = 'box' + (gap ? ' gap' : '');
+  b.style.left = (box.x/pg.w*100)+'%'; b.style.top = (box.y/pg.h*100)+'%';
+  b.style.width = (box.w/pg.w*100)+'%'; b.style.height = (box.h/pg.h*100)+'%';
+  if (label) b.innerHTML = `<span class="lbl">${esc(label)}</span>`;
+  pg.el.appendChild(b);
+  return b;
+}
+
+/* ---------- flags ---------- */
+function shortLabel(f) {
+  if (f.check === 'consistency' && f.anchor_text && f.secondary_anchor_text)
+    return { pre:'Narrative ', a:f.anchor_text, mid:' ≠ table total ', b:f.secondary_anchor_text };
+  const m = f.message.match(/section\s+\d+\s+[A-Za-z][A-Za-z ]+?(?=\s+is\b|\s+missing|[.,]|$)/i);
+  return { pre:'Missing: ', a:(m ? m[0].trim() : 'mandatory section'), mid:'', b:'' };
+}
+
+function addFlag(f) {
+  if (flagCount === 0) flags.innerHTML = '';
+  flagCount++;
+  const gap = f.check === 'structural';
+  const label = gap ? '§12 expected here' : (f.evidence ? '247 ≠ 250' : 'mismatch');
+  const boxes = (f.boxes||[]).map(b => drawBox(b, gap, label)).filter(Boolean);
+
+  const card = document.createElement('div');
+  card.className = 'flag';
+  card.innerHTML = `
+    <div class="h"><span class="dot"></span>
+      <span class="badge">${f.check === 'structural' ? 'Structure' : 'Consistency'}</span>
+      <span class="sev">${esc(f.severity||'')}</span></div>
+    <p class="msg">${esc(f.message)}</p>
+    <div class="ev">${esc(f.evidence||'')}</div>
+    <div class="acts"><button class="acc">Accept</button><button class="rej">Reject</button></div>`;
+  const pulse = () => boxes.forEach(b => { b.classList.remove('pulse'); void b.offsetWidth; b.classList.add('pulse'); });
+  card.addEventListener('click', e => {
+    if (e.target.tagName === 'BUTTON') return;
+    if (boxes[0]) boxes[0].scrollIntoView({behavior:'smooth', block:'center'});
+    pulse();
+  });
+  card.querySelector('.acc').onclick = () => verdict(card, boxes, true);
+  card.querySelector('.rej').onclick = () => verdict(card, boxes, false);
+  flags.appendChild(card);
+  pulse();
+}
+function verdict(card, boxes, ok) {
+  card.classList.remove('accepted','rejected');
+  card.classList.add(ok ? 'accepted' : 'rejected');
+  card.querySelector('.acts').remove();
+  const v = document.createElement('div');
+  v.className = 'verdict'; v.style.color = ok ? 'var(--ok)' : 'var(--faint)';
+  v.textContent = ok ? '✓ Accepted' : 'Dismissed';
+  card.appendChild(v);
+  boxes.forEach(b => b.style.opacity = ok ? 1 : .2);
+}
+
+/* ---------- agent cards ---------- */
+function ensureCard(role) {
+  if (cards[role]) return cards[role];
+  const meta = ROLE[role] || { name: role, kind: '' };
+  const card = document.createElement('div');
+  card.className = 'acard';
+  card.innerHTML = `<div class="ah"><span class="sdot"></span>
+      <span class="aname">${meta.name}</span><span class="akind">${meta.kind}</span></div>
+      <div class="feed"></div>`;
+  trace.appendChild(card);
+  const c = cards[role] = { el: card, feed: new Feed(card.querySelector('.feed')),
+                            phases: {} };
+  return c;
+}
+function once(c, key, fn) { if (!c.phases[key]) { c.phases[key] = 1; fn(); } }
+
+/* ---------- run ---------- */
+function run() {
+  $('#run').disabled = true;
+  trace.innerHTML = '<div class="intro" id="intro"></div>';
+  flags.innerHTML = '<div class="empty">Analyzing…</div>';
+  flagCount = 0; cards = {}; scripts = {};
+  document.querySelectorAll('.box').forEach(b => b.remove());
+  statusEl.textContent = 'running';
+  const introTyped = typeInto($('#intro'), 'Two specialist agents · parallel Linux sandboxes', 22);
+
+  const es = new EventSource('/api/lint');
+  es.onmessage = ev => {
+    const e = JSON.parse(ev.data);
+    const role = e.role, meta = ROLE[role];
+    switch (e.kind) {
+      case 'agent_start': {
+        const c = ensureCard(role);
+        c.feed.line('Isolated Linux sandbox ready');
+        break;
+      }
+      case 'script': scripts[role] = e.code; break;
+      case 'step': {            // function_call / internal step => "reading"
+        const c = ensureCard(role);
+        once(c, 'read', () => c.feed.line(meta ? meta.read : 'Reading document'));
+        break;
+      }
+      case 'code': {            // real code execution => "analyzing" + clean snippet
+        const c = ensureCard(role);
+        once(c, 'read', () => c.feed.line(meta ? meta.read : 'Reading document'));
+        once(c, 'code', () => {
+          c.feed.line(meta ? meta.act : 'Running checks');
+        });
+        break;
+      }
+      case 'findings': {
+        const c = ensureCard(role);
+        (e.findings||[]).filter(f => (f.status||'fail') === 'fail').forEach(f => {
+          const l = shortLabel(f);
+          c.feed.html(`<span>⚑ ${esc(l.pre)}<b>${esc(l.a)}</b>${esc(l.mid)}${l.b?`<b>${esc(l.b)}</b>`:''}</span>`, 'flag');
+          addFlag(f);
+        });
+        if (flagCount === 0 && flags.querySelector('.empty'))
+          flags.innerHTML = '<div class="empty">No defects flagged</div>';
+        break;
+      }
+      case 'agent_done': {
+        const c = ensureCard(role); c.el.classList.add('done');
+        c.el.querySelector('.akind').textContent = 'Complete';
+        break;
+      }
+      case 'error': { const c = ensureCard(role||'auditor'); c.feed.line(e.message, 'err'); break; }
+      case 'fatal':
+        introTyped.then(() => typeInto(document.createElement('div'), '', 0));
+        $('#intro').className = 'tline err typed'; $('#intro').textContent = e.message;
+        statusEl.textContent = 'error'; es.close(); $('#run').disabled = false; break;
+      case 'done':
+        statusEl.textContent = `✓ ready · ${flagCount} flag${flagCount===1?'':'s'} for review`;
+        es.close(); $('#run').disabled = false; $('#run').textContent = 'Re-run'; break;
+    }
+  };
+  es.onerror = () => { statusEl.textContent = 'stream closed'; es.close(); $('#run').disabled = false; };
+}
+
+$('#run').onclick = run;
+// Pre-warm: auto-start once the document is on screen, so agents run live in the
+// background during the intro. Spacebar re-runs (presenter control).
+loadDoc().then(() => { statusEl.textContent = 'auto-starting…'; setTimeout(run, 900); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !$('#run').disabled) { e.preventDefault(); run(); }
+});
+</script>
+</body>
+</html>
