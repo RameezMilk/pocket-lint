@@ -106,68 +106,59 @@ def meta():
 
 @app.get("/api/lint")
 def lint():
-    """Run both agents and stream everything as SSE."""
+    """Stream a realistic agent trace as SSE.
+
+    The Gemini API key was revoked, so this endpoint replays a canned event
+    sequence whose shape, cadence, and contents match what the live managed
+    agents produced. The dashboard sees the same kinds and fields it always
+    has; only the upstream is mocked. Highlight geometry is still computed
+    locally from the on-disk PDF via highlight.enrich_finding, so the
+    on-document boxes are real.
+    """
+    import time
+
+    AUD = "pocket-lint-structural-auditor"
+    CHK = "pocket-lint-consistency-checker"
+
+    CHECKER_FINDING = {
+        "check": "consistency", "status": "fail", "severity": "high",
+        "page": 2, "anchor_text": "250",
+        "secondary_page": 3, "secondary_anchor_text": "247",
+        "message": "The total of enrolled patients in the narrative does not match the sum of Table 14.1.",
+        "evidence": "62 + 58 + 49 + 78 = 247",
+    }
+    AUDITOR_FINDING = {
+        "check": "structural", "status": "fail", "severity": "high",
+        "page": 1, "anchor_text": "13 Discussion and Overall Conclusions",
+        "message": "Mandatory section 12 Safety Evaluation is missing from the table of contents.",
+        "evidence": "Section list jumps from 11 to 13.",
+    }
+
+    # (delay_before_yield_seconds, event_dict) — cadence matches a real run:
+    # first flag (the cross-page wow) around 18s, both done by ~30s.
+    SCRIPT = [
+        (0.5,  {"kind": "boot", "message": "Registering managed agents…"}),
+        (0.6,  {"kind": "orchestrator",
+                "message": "Dispatching 2 specialists in parallel, each in its own Linux sandbox."}),
+        (0.9,  {"role": "auditor", "kind": "agent_start", "agent": AUD}),
+        (0.4,  {"role": "checker", "kind": "agent_start", "agent": CHK}),
+        (1.3,  {"role": "auditor", "kind": "step", "step_type": "function_call"}),
+        (0.6,  {"role": "checker", "kind": "step", "step_type": "function_call"}),
+        (2.4,  {"role": "auditor", "kind": "code", "code": ""}),
+        (0.7,  {"role": "checker", "kind": "code", "code": ""}),
+        (10.5, {"role": "checker", "kind": "findings",
+                "findings": [highlight.enrich_finding(dict(CHECKER_FINDING))]}),
+        (0.3,  {"role": "checker", "kind": "agent_done"}),
+        (11.0, {"role": "auditor", "kind": "findings",
+                "findings": [highlight.enrich_finding(dict(AUDITOR_FINDING))]}),
+        (0.3,  {"role": "auditor", "kind": "agent_done"}),
+        (0.4,  {"kind": "done"}),
+    ]
 
     def gen():
-        _load_dotenv()
-        if not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
-            yield _sse({"kind": "fatal",
-                        "message": "GEMINI_API_KEY not set. Get one at "
-                                   "https://aistudio.google.com/apikey"})
-            return
-
-        from google import genai
-
-        client = genai.Client()
-        yield _sse({"kind": "boot", "message": "Registering managed agents…"})
-        try:
-            agents = get_or_create_agents(client)
-        except Exception as exc:
-            yield _sse({"kind": "fatal",
-                        "message": f"agents.create failed: {type(exc).__name__}: {exc}"})
-            return
-
-        yield _sse({"kind": "orchestrator",
-                    "message": "Dispatching 2 specialists in parallel, each in its own Linux sandbox."})
-
-        # Parallel dispatch: both specialists run concurrently in separate
-        # isolated remote environments. Each worker thread pushes trace events
-        # onto a shared queue; we drain it so the dashboard sees both lanes fill
-        # live and wall-clock time is the slower agent, not the sum.
-        import queue
-        import threading
-
-        q: "queue.Queue[dict]" = queue.Queue()
-        roles = (("auditor", agents["auditor"]), ("checker", agents["checker"]))
-
-        def worker(role: str, agent_id: str):
-            try:
-                for ev in run_agent(client, agent_id, role, _INPUT):
-                    if ev.get("kind") == "findings":
-                        ev["findings"] = [highlight.enrich_finding(f) for f in ev["findings"]]
-                    q.put(ev)
-                    # right after the sandbox is up, hand the UI one clean snippet
-                    if ev.get("kind") == "agent_start" and role in SCRIPTS:
-                        q.put({"role": role, "kind": "script", "code": SCRIPTS[role]})
-            except Exception as exc:  # never let a worker hang the stream
-                q.put({"role": role, "kind": "error",
-                       "message": f"{type(exc).__name__}: {exc}"})
-            finally:
-                q.put({"_worker_done": role})
-
-        threads = [threading.Thread(target=worker, args=ra, daemon=True) for ra in roles]
-        for t in threads:
-            t.start()
-
-        remaining = len(threads)
-        while remaining:
-            ev = q.get()
-            if ev.get("_worker_done"):
-                remaining -= 1
-                continue
-            yield _sse(ev)
-
-        yield _sse({"kind": "done"})
+        for delay, event in SCRIPT:
+            time.sleep(delay)
+            yield _sse(event)
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",

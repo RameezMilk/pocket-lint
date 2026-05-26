@@ -91,6 +91,9 @@
               font-weight:500; }
   .box.gap .lbl { background:var(--amber); }
   .box.pulse { box-shadow:0 0 0 5px rgba(220,38,38,.18); }
+  .box.ok { border-color:var(--ok); background:rgba(22,163,74,.12); }
+  .box.ok .lbl { background:var(--ok); }
+  .box.dim { opacity:.18; }
   @keyframes fade { from{opacity:0} to{opacity:1} }
 
   /* ---- trace ---- */
@@ -120,13 +123,69 @@
   }
   pre.code::after { content:"▍"; color:var(--faint); animation:blink 1s steps(1) infinite; }
   pre.code.typed::after { content:""; }
+
+  /* ---- configure custom agent ---- */
+  .trace-foot { border-top:1px solid var(--line); padding:14px 22px; }
+  .cfg-btn {
+    width:100%; border:1px dashed #d4d4d8; background:#fff; color:var(--ink);
+    border-radius:10px; padding:11px; font-size:13px; font-weight:500; cursor:pointer;
+    letter-spacing:-.01em; transition:.15s;
+  }
+  .cfg-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+  /* ---- modal ---- */
+  .overlay { position:fixed; inset:0; background:rgba(24,24,27,.32);
+             display:flex; align-items:center; justify-content:center; z-index:50;
+             animation:fade .15s ease; backdrop-filter:blur(2px); }
+  .overlay[hidden] { display:none; }
+  .sheet { width:520px; max-width:calc(100vw - 40px); background:#fff;
+           border-radius:16px; padding:24px; box-shadow:0 20px 60px rgba(0,0,0,.22);
+           animation:rise .2s ease; }
+  @keyframes rise { from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+  .sheet-h { display:flex; align-items:center; justify-content:space-between; }
+  .sheet-h span { font-size:16px; font-weight:600; letter-spacing:-.01em; }
+  .sheet-x { border:0; background:none; font-size:24px; line-height:1; color:var(--faint);
+             cursor:pointer; padding:0 2px; }
+  .sheet-x:hover { color:var(--ink); }
+  .sheet-sub { color:var(--muted); font-size:13px; margin:6px 0 18px; }
+  .dropzone { border:2px dashed #d4d4d8; border-radius:12px; padding:34px 20px;
+              text-align:center; cursor:pointer; transition:.15s; background:var(--panel); }
+  .dropzone:hover { border-color:#bcbcc2; }
+  .dropzone.drag { border-color:var(--accent); background:#eff4ff; }
+  .dz-icon { font-size:26px; color:var(--faint); margin-bottom:6px; }
+  .dz-title { font-size:14px; font-weight:500; }
+  .dz-sub { font-size:12.5px; color:var(--muted); margin-top:2px; }
+  .filelist { list-style:none; margin:14px 0 0; padding:0; display:flex;
+              flex-direction:column; gap:7px; max-height:160px; overflow:auto; }
+  .filelist li { display:flex; align-items:center; gap:9px; font-size:13px;
+                 border:1px solid var(--line); border-radius:8px; padding:8px 11px; }
+  .filelist li .fn { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .filelist li .fs { color:var(--faint); font-size:11.5px; font-variant-numeric:tabular-nums; }
+  .filelist li .rm { border:0; background:none; color:var(--faint); cursor:pointer;
+                     font-size:16px; line-height:1; }
+  .filelist li .rm:hover { color:var(--fail); }
+  .field { margin-top:16px; }
+  .field label { display:block; font-size:12px; font-weight:600; color:var(--muted);
+                 margin-bottom:6px; letter-spacing:.01em; }
+  .text-input { width:100%; border:1px solid var(--line); border-radius:9px;
+                padding:9px 12px; font-size:13.5px; color:var(--ink); outline:none;
+                transition:.15s; font-family:inherit; }
+  .text-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+  .text-input::placeholder { color:var(--faint); }
+  .sheet-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+  .btn-ghost { border:1px solid var(--line); background:#fff; color:var(--ink);
+               border-radius:9px; padding:8px 16px; font-size:13px; font-weight:500; cursor:pointer; }
+  .btn-ghost:hover { border-color:#d4d4d8; }
+  .btn-primary { border:0; background:var(--ink); color:#fff; border-radius:9px;
+                 padding:8px 16px; font-size:13px; font-weight:500; cursor:pointer; }
+  .btn-primary:hover { opacity:.85; }
+  .btn-primary:disabled { background:var(--hair); color:var(--faint); cursor:default; }
 </style>
 </head>
 <body>
 <header>
   <img class="logo" src="/assets/logo.png?v=2" alt="Pocket Lint logo">
   <h1>Pocket&nbsp;Lint</h1>
-  <span class="tag">agentic compliance, down to the last thread</span>
   <span class="spacer"></span>
   <span id="status">idle</span>
   <button id="run">Lint this CSR</button>
@@ -144,8 +203,36 @@
   <section>
     <div class="col-title">Agent activity</div>
     <div class="trace" id="trace"><div class="intro" id="intro"></div></div>
+    <div class="trace-foot">
+      <button id="cfg" class="cfg-btn">+ Configure Custom Agent</button>
+    </div>
   </section>
 </main>
+
+<div class="overlay" id="modal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="sheet-h">
+      <span id="modalTitle">Configure custom grounding policy</span>
+      <button class="sheet-x" id="modalX" aria-label="Close">&times;</button>
+    </div>
+    <p class="sheet-sub">Upload reference documents to ground a custom agent.</p>
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" multiple hidden>
+      <div class="dz-icon">⤓</div>
+      <div class="dz-title">Drag and drop documents here</div>
+      <div class="dz-sub">or click to browse</div>
+    </div>
+    <ul class="filelist" id="filelist"></ul>
+    <div class="field">
+      <label for="agentName">Agent name</label>
+      <input type="text" id="agentName" class="text-input" placeholder="e.g. Endpoint Validator" autocomplete="off">
+    </div>
+    <div class="sheet-actions">
+      <button class="btn-ghost" id="modalCancel">Cancel</button>
+      <button class="btn-primary" id="modalSave">Save policy</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -259,7 +346,12 @@ function verdict(card, boxes, ok) {
   v.className = 'verdict'; v.style.color = ok ? 'var(--ok)' : 'var(--faint)';
   v.textContent = ok ? '✓ Accepted' : 'Dismissed';
   card.appendChild(v);
-  boxes.forEach(b => b.style.opacity = ok ? 1 : .2);
+  boxes.forEach(b => {
+    b.classList.remove('pulse', 'ok', 'dim');
+    b.classList.add(ok ? 'ok' : 'dim');
+    const lbl = b.querySelector('.lbl');
+    if (lbl && ok && !lbl.dataset.done) { lbl.textContent = '✓ ' + lbl.textContent; lbl.dataset.done = '1'; }
+  });
 }
 
 /* ---------- agent cards ---------- */
@@ -346,8 +438,41 @@ $('#run').onclick = run;
 // background during the intro. Spacebar re-runs (presenter control).
 loadDoc().then(() => { statusEl.textContent = 'auto-starting…'; setTimeout(run, 900); });
 document.addEventListener('keydown', e => {
-  if (e.code === 'Space' && !$('#run').disabled) { e.preventDefault(); run(); }
+  if (e.code === 'Space' && !$('#run').disabled && $('#modal').hidden) { e.preventDefault(); run(); }
 });
+
+/* ---------- Configure Custom Agent modal ---------- */
+const modal = $('#modal'), dropzone = $('#dropzone'), fileInput = $('#fileInput'), filelist = $('#filelist');
+const uploaded = [];
+const openModal  = () => { modal.hidden = false; };
+const closeModal = () => { modal.hidden = true; };
+$('#cfg').onclick = openModal;
+$('#modalX').onclick = closeModal;
+$('#modalCancel').onclick = closeModal;
+$('#modalSave').onclick = closeModal;
+modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+document.addEventListener('keydown', e => { if (e.code === 'Escape' && !modal.hidden) closeModal(); });
+
+const fmtSize = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(0) + ' KB' : (b/1048576).toFixed(1) + ' MB';
+function renderFiles() {
+  filelist.innerHTML = '';
+  uploaded.forEach((f, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>📄</span><span class="fn">${esc(f.name)}</span>
+      <span class="fs">${fmtSize(f.size)}</span><button class="rm" title="Remove">&times;</button>`;
+    li.querySelector('.rm').onclick = () => { uploaded.splice(i, 1); renderFiles(); };
+    filelist.appendChild(li);
+  });
+}
+const addFiles = list => { for (const f of list) uploaded.push(f); renderFiles(); };
+
+dropzone.onclick = () => fileInput.click();
+fileInput.onchange = () => { addFiles(fileInput.files); fileInput.value = ''; };
+['dragenter','dragover'].forEach(ev => dropzone.addEventListener(ev, e => {
+  e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e => {
+  e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', e => { if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 </script>
 </body>
 </html>
